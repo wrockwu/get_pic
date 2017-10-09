@@ -1,0 +1,334 @@
+import logging
+import requests
+import bs4
+import pymysql 
+from bs4 import BeautifulSoup
+import sys, getopt
+from time import sleep
+import time
+from datetime import datetime
+import random
+
+usr_agt = 'User-Agent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36'
+hdr = {}
+hdr['User-Agent'] = usr_agt
+
+site_nicklst = ['xici', 'kx', 'kuai']
+
+site_httpaddr = {}
+site_httpaddr['xici'] = 'http://www.xicidaili.com/nn/1'
+site_httpaddr['kx'] = 'http://www.kxdaili.com/dailiip/1/1.html#ip'
+site_httpaddr['kuai'] = 'http://www.kuaidaili.com/free/inha/1'
+
+'''
+parse_dict = {}
+parse_dict['xici'] = parse_xici
+parse_dict['kx'] = parse_kx
+parse_dict['kuai'] = parse_kuai
+'''
+
+pages_dict = {}
+pages_dict['xici'] = 10
+pages_dict['kx'] = 10
+pages_dict['kuai'] = 10
+
+xici_body = 'http://www.xicidaili.com/nn/'
+kx_body = 'http://www.kxdaili.com/dailiip/1/'
+kx_tail = '.html#ip'
+kuai_body = 'http://www.kuaidaili.com/free/inha/'
+
+logging.basicConfig(level=logging.INFO, format=' %(asctime)s - %(levelname)s - %(message)s', \
+                    filename='proxy.log', filemode='w')
+
+conn = pymysql.connections.Connection
+cur = pymysql.cursors.Cursor
+
+'''
+    SQL Sentence
+'''
+proxy_insert = "INSERT IGNORE INTO proxy (ip, port, country, protocal, disconntm) VALUES (%s, %s, %s, %s, %s)"
+proxy_querry = "SELECT ip, port, country, protocal, disconntm from proxy"
+#proxy_querry = """SELECT * FROM proxy"""
+proxy_update = "UPDATE proxy set disconntm=%s WHERE ip=%s"
+proxy_del = "DELETE FROM proxy WHERE ip=%s"
+
+
+'''
+    show columns from database:
+    +------------+-------------+------+-----+---------+-------+
+    | Field      | Type        | Null | Key | Default | Extra |
+    +------------+-------------+------+-----+---------+-------+
+    | ip         | varchar(15) | NO   | PRI | NULL    |       |
+    | port       | varchar(5)  | NO   |     | NULL    |       |
+    | country    | varchar(2)  | YES  |     | NULL    |       |
+    | protocal   | varchar(5)  | YES  |     | NULL    |       |
+    | disconntm  | int(1)      | NO   |     | NULL    |       |
+    +------------+-------------+------+-----+---------+-------+
+'''
+def db_conn():
+    global conn
+    global cur
+    conn = pymysql.connect(host='localhost', user='proxy', passwd='proxy', db='proxydb', charset='utf8')
+    cur = conn.cursor()
+
+'''
+    Include insert()&update()&delete(), depend on sql sentence
+'''
+def db_update(sql, args):
+    try:
+        sta = cur.execute(sql, args)
+    except Exception as err:
+        logging.critical('db_update failed, reason:%s' %err)
+    conn.commit()
+
+'''
+    database querry
+'''
+def db_querry(sql, args):
+    if args is None:
+        cur.execute(sql)
+    else:
+        cur.execute(sql, args)
+    return cur.fetchall()
+
+def db_close():
+    global conn
+    global cur
+    cur.close()
+    conn.close()
+
+'''
+    for www.xicidaili.com
+'''
+def parse_xici(obj):
+    logging.info('start to parse site:xici')
+    bsobj = obj
+
+    '''
+        find ip_list in html
+    '''
+    bsobj = bsobj.find('table', {'id':'ip_list'})
+    if bsobj is None:
+        return
+    '''
+        remove first tag, invalue data in this tag   
+    '''
+    bsobj.tr.decompose()
+ 
+    db_conn()
+    for child in bsobj.find_all('tr'):
+        '''
+            ip
+        '''
+        ip = child.td.next_sibling.next_sibling.get_text()
+        '''
+            port
+        '''
+        port = child.td.next_sibling.next_sibling.next_sibling.next_sibling.get_text()
+        '''
+            protocal
+        '''
+        prot = child.td.next_sibling.next_sibling.next_sibling.next_sibling.next_sibling.\
+                next_sibling.next_sibling.next_sibling.next_sibling.next_sibling.get_text()
+        prot = prot.lower()
+        
+        '''
+            insert sql sentence
+        '''
+        sql = proxy_insert
+        db_update(sql, (ip, port, "NULL", prot, 0))
+    db_close()
+
+def parse_kx(obj):
+    logging.info('start to parse site:kx')
+    bsobj = obj
+    
+    bsobj = bsobj.find('tbody')
+    if bsobj is None:
+        return
+
+    db_conn()
+    for child in bsobj.find_all('tr'):
+        ip = child.td.get_text()
+        port = child.td.next_sibling.next_sibling.get_text()
+#        prot = child.td.next_sibling.next_sibling.next_sibling.next_sibling.next_sibling.next_sibling.get_text()
+        '''
+            set 'prot' to http manually 
+        '''
+        prot = 'http'
+        sql = proxy_insert
+        db_update(sql, (ip, port, "NULL", prot, 0))
+    db_close()
+
+def parse_kuai(obj):
+    logging.info('start to parse site:kuai')
+
+    bsobj = obj.find('body')
+    if bsobj is None:
+        logging.info('can not found element')
+        return
+
+    for child in bsobj.children:
+        print("++++++++++++++++++++++++++++++++++++++++++")
+        print("%s"%(child))
+    
+    db_conn()
+    for child in bsobj.find_all('tr'):
+        ip = child.td.get_text()
+        port = child.td.next_sibling.next_sibling.get_text()
+        '''
+            set 'prot' to http manually 
+        '''
+        prot = 'http'
+        sql = proxy_insert 
+        db_update(sql, (ip, port, "NULL", prot, 0))
+    db_close()
+
+'''
+    placed here to avoid warning. 
+    i am python fresh man, is there a better way to deal with this problem? 
+'''
+parse_dict = {}
+parse_dict['xici'] = parse_xici
+parse_dict['kx'] = parse_kx
+parse_dict['kuai'] = parse_kuai
+
+
+def gen_pageaddr(order, site_n):
+    if site_n == 'xici':
+        body = xici_body
+        tail = str(order)
+    elif site_n == 'kx':
+        body = kx_body
+        tail = str(order) + kx_tail
+    elif site_n == 'kuai':    
+        body = kuai_body
+        tail = str(order)
+    
+    page_site = body + tail
+    return page_site
+
+def parse_pages(page_num, site_n):
+    for num in range(1, page_num+1):
+        site = gen_pageaddr(num, site_n)
+        logging.info('get html obj from:%s'%(site))
+        bsobj = get_bsobj(site, None, None)
+        if bsobj is None:
+            print('can not get bsobj')
+            return
+        parse_dict[site_n](bsobj)
+        '''
+            sleep a piece of time to avoid blocked
+            sleep 1s nowdays
+        '''
+        sleep(1)
+
+def get_bsobj(site, proxies, timeout):
+    
+    try:
+        r = requests.get(url=site, headers=hdr, proxies=proxies, timeout=timeout )
+    except Exception as err:
+        logging.critical('open %s failed, reason:%s' %(site, err))
+        return None
+  
+    print('r.text:%s'%r.text)
+    bsobj = BeautifulSoup(r.text, 'lxml')
+    return bsobj
+
+def start_scrapy():
+    for site in site_nicklst:
+        logging.info('start to crawl ip from %s'%(site));
+        parse_pages(pages_dict[site], site)
+    
+def start_check(to):
+    logging.info('start to check proxy available');
+    proxies = {}
+    sql = proxy_querry 
+    db_conn()
+    items = db_querry(sql, None)
+
+    if to == 0:
+        to = 1
+
+    for each in items:
+        ip = each[0]
+        port = each[1]
+        disconntm = each[4]
+        if disconntm > 1:
+            logging.debug('unavailable ip:%s, delete it!' %(ip))
+            sql = proxy_del
+            db_update(sql, ip)
+            continue
+        
+        site = 'http://' + ip + ':' + port
+        proxies['http'] = site
+        obj = get_bsobj('http://www.baidu.com', proxies, timeout=to)
+        if obj is None:
+            sql = proxy_update
+            tms = disconntm + 1
+            db_update(sql, (tms, ip))
+    db_close()
+
+random_sec = random.randint(8,12)*60*60
+regulate_sec = 1*60*60
+def run_background():
+    '''
+        scrapy sleep a random period, between 8~12h
+        check sleep 1h
+    '''
+    scrapy_sleep_sec = random_sec 
+    check_sleep_sec = regulate_sec 
+    skip_sec = scrapy_sleep_sec
+    while True:
+        if skip_sec == 0:
+            start_scrapy()
+            skip_sec = random_sec 
+        start_check(config['timeout'])
+        sleep(check_sleep_sec)
+        skip_sec = skip_sec - check_sleep_sec 
+
+def test_api():
+    bsobj = get_bsobj('http://www.kuaidaili.com/free/inha/1', None, None)
+    parse_kuai(bsobj)
+    
+config = {
+            "db":"",       
+            "timeout":5,
+        }
+
+if __name__ == '__main__':
+
+    logging.info('starting...');
+    opts, args = getopt.getopt(sys.argv[1:], 'hgcpd:t:', ['help', 'get', 'check', \
+                                                        'test', 'db=', 'timeout=',\
+                                                        'permanent'])
+
+    for op,va in opts:
+        if op in ['-t', '--timeout']:
+            config['timeout'] = int(va)
+
+    for op,va in opts:
+        if op in ['-h', '--help']:
+            print('-h, --help')
+            print('show this context')
+            print('-g, --get')
+            print('start scrapy, get ip from public web site')
+            print('-c, --check')
+            print('check ip valuable or not')
+            print('-t, --timeout')
+            print('set timeout value, we use this value in check process')
+            print('-p, --permanent')
+            print('permanent run mode')
+        elif op in ['-g', '--get']:
+            start_scrapy()
+        elif op in ['-c', '--check']:
+            start_check(config['timeout'])
+        elif op in ['--test']:
+            test_api()
+            print('test api')
+        elif op in ['-p', '--permanent']:
+            run_background()
+        elif op == ' ':
+            print('please refer to usage')
+
+    logging.info('end main')
