@@ -8,6 +8,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
+import urllib
+import random
 
 dcap=dict(DesiredCapabilities.PHANTOMJS)
 dcap['PhantomJS.page.settings.resourceTimeout'] = 1000
@@ -20,13 +22,23 @@ dcap['phantomjs.page.settings.userAgent'] = ('Mozilla/5.0 (X11; Linux x86_64) \
 logging.basicConfig(level=logging.INFO, format=' %(asctime)s - %(levelname)s - %(message)s', \
                     filename='hunter.log', filemode='w')
 
+headers = {
+    "User-Agent":'Mozilla/5.0 (X11; Linux x86_64) \
+                AppleWebKit/537.36 (KHTML, like Gecko) \
+                Chrome/61.0.3163.100 Safari/537.36',      
+        
+}
+
 cate_list = []
 url = 'https://www.taobao.com'
+
+i = 0
 
 logging.info('Start hunter')
 #driver = webdriver.PhantomJS(desired_capabilities=dcap)
 driver = webdriver.Chrome()
 driver.get(url)
+sleep(1)
 try:
     WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.ID, 'q')))
 except:
@@ -35,8 +47,9 @@ logging.info('Open URL success')
 
 elem = driver.find_element_by_name('q')
 elem.clear()
-elem.send_keys('Fisher Price')
+elem.send_keys('好奇小姐')
 elem.send_keys(Keys.RETURN)
+sleep(2)
 
 """Change page sort by sale
 """
@@ -78,15 +91,69 @@ logging.info('Change list mode success')
 #elems = driver.find_elements_by_css_selector('a.comment')
 elems = driver.find_elements_by_class_name('comment')
 
+def is_tmall_page():
+    try:
+        elem = driver.find_element_by_id('mallLogo')
+    except Exception as e:
+        elem = None
+#        print('erro:%s'%(e))
+
+    if elem is None:
+        return False
+    else:
+        return True
+
 def click_pic_review_btn():
-    elem = driver.find_element_by_css_selector('input#reviews-t-val3')
-    #elem = driver.find_element_by_css_selector('a.tb-tab-anchor')
-    ActionChains(driver).move_to_element(elem).click().perform()
+    if is_tmall_page():
+        elem = driver.find_element_by_xpath('//label[contains(text(), "图片")]')
+    else:
+        elem = driver.find_element_by_xpath('//input[@id="reviews-t-val3"]')
+
+    if elem is None:
+        logging.info('No pic in commet')
+    else:
+        ActionChains(driver).move_to_element(elem).click().perform()
+
+def get_pics_url():
+    urls = []
+    elems = driver.find_elements_by_xpath('//img[contains(@src,"0-rate.jpg_40x40.jpg")]')
+    logging.info('img url:%s'%(elems))
+    for e in elems:
+        url = e.get_attribute('src')[0:-10]
+        urls.append(url)
+
+    return urls
+
+def save_pics(urls):
+    global i
+    for url in urls:
+        req = urllib.request.Request(url=url, headers=headers)
+        try:
+            data = urllib.request.urlopen(req).read()
+        except Exception as e:
+            print('missing pic')
+            continue
+        f = open(str(i) + '.jpg', 'wb')
+        f.write(data)
+        print ("正在保存的一张图片为")
+        f.close()
+        i += 1
+        s_time= random.uniform(1,3)
+        print(s_time)
+        sleep(random.uniform(1,3))
+
 
 def download_comment_pic():
     click_pic_review_btn()
+    """Wait page load full comment with pic
+    """
+    sleep(random.uniform(3,5))
+    urls = get_pics_url()
+
+    save_pics(urls)
 
 for e in elems:
+    sleep(random.uniform(2,4))
     logging.info(e.get_attribute('href'))
     """right click on the comment, to open a new tab
     """
@@ -95,16 +162,17 @@ for e in elems:
     """switch to new tab
     """
     handles = driver.window_handles
-    print(handles)
-    print(driver.current_window_handle)
+    logging.info(handles)
+    logging.info(driver.current_window_handle)
     driver.switch_to_window(handles[1])
-    print(driver.current_window_handle)
+    logging.info(driver.current_window_handle)
     
     """wait for load full comment page
     """
-    sleep(10)    
+    sleep(random.uniform(3,5))    
     download_comment_pic()
-    sleep(3)
+    sleep(random.uniform(3,5))
+
 
     """Close the new tab, return to original page
     """
