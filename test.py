@@ -1,3 +1,4 @@
+import os
 import logging
 from time import sleep
 from bs4 import BeautifulSoup
@@ -30,67 +31,108 @@ headers = {
         
 }
 
-cate_list = []
+global url
 url = 'https://www.taobao.com'
-
-i = 0
-
-logging.info('Start hunter')
-#driver = webdriver.PhantomJS(desired_capabilities=dcap)
+global driver
 driver = webdriver.Chrome()
-driver.get(url)
-sleep(1)
-try:
-    WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.ID, 'q')))
-except:
-    driver.close()
-logging.info('Open URL:%s success'%(url))
+global i
+i = 0
+global k_words
+k_words = '比基尼 三点式'
+global path_pic
+path_pic = '/home/bwu/pics'
 
-elem = driver.find_element_by_name('q')
-elem.clear()
-elem.send_keys('IPhone')
-elem.send_keys(Keys.RETURN)
-sleep(2)
+def hunter_init():
+    logging.info('Start hunter')
+    #driver = webdriver.PhantomJS(desired_capabilities=dcap)
+    driver.get(url)
 
-"""Change page sort by sale
-"""
-menue = driver.find_element_by_link_text('销量')
-actions = ActionChains(driver)
-actions.move_to_element(menue)
-actions.click()
-actions.perform() 
+def enter_key_words(words):
+    try:
+        WebDriverWait(driver, 10).until(lambda x: x.find_element_by_css_selector('input#q.search-combobox-input'))
+        logging.info('Open URL:%s success'%(url))
+    except Exception as e:
+        logging.info('error:%s, Open URL:%s failed?'%(e,url))
+        driver.close()
 
-"""Wait page change to sort by sale
-"""
-while not (driver.find_element_by_css_selector('a.J_Ajax.link.active').text == '销量从高到低'):
-    sleep(1)
-logging.info('Change sort mode success')
+    """Page show search bar, wait some seconds
+    """
+    sleep(random.uniform(1, 2.5))
+    elem = driver.find_element_by_name('q')
+    elem.clear()
+    elem.send_keys(words)
 
-"""Change page to list mode, find the element first
-"""
-elems = driver.find_elements_by_css_selector('a.J_Ajax.J_SortbarStyle.link.icon-tag')
-for e in elems:
-    logging.info(e.text)
-    if (e.get_attribute('title')) == '列表模式':
-        break
-ActionChains(driver).move_to_element(e).click().perform()
+    """Cheat
+    """
+    sleep(random.uniform(0.5, 1))
+    elem.send_keys(Keys.RETURN)
 
-"""Wait page change to list mode
-"""
-while not (e.get_attribute('class') == 'J_Ajax J_SortbarStyle link icon-tag active icon-hover'):
-    sleep(1)
+def click_sortbysale_btn():
+    try:
+        WebDriverWait(driver, 10).until(lambda x: x.find_element_by_css_selector('ul.sorts'))
+    except Exception as e:
+        logging.info('error:%s, Can not get sort bar?'%(e))
+        driver.close()
+    
+    """Cheat
+    """
+    sleep(random.uniform(1, 2))
+    """Change page sort by sale
+    """
+    elem = driver.find_element_by_link_text('销量')
+    actions = ActionChains(driver)
+    actions.move_to_element(elem)
+    actions.click()
+    actions.perform() 
+
+    """Wait page change to sort by sale
+    """
+    while not (driver.find_element_by_css_selector('a.J_Ajax.link.active').text == '销量从高到低'): 
+        sleep(1) 
+
+    logging.info('Change sort mode success')
+
+def click_showbylist_btn():
+    try:
+        WebDriverWait(driver, 10).until(lambda x: x.find_element_by_css_selector('div.styles'))
+    except Exception as e:
+        logging.info('error:%s, Can not get list styles bar?'%(e))
+        driver.close()
+    """Cheat
+    """
+    sleep(random.uniform(1, 3))
+    """Change page to list mode, find the element first
+    """
     elems = driver.find_elements_by_css_selector('a.J_Ajax.J_SortbarStyle.link.icon-tag')
     for e in elems:
-        logging.info(e.get_attribute('title'))
-        logging.info(e.get_attribute('calss'))
         if (e.get_attribute('title')) == '列表模式':
+            logging.info('find list styles bar')
             break
-logging.info('Change list mode success')
+    ActionChains(driver).move_to_element(e).click().perform()
 
-"""Get all comment link, store in a list
-"""
-#elems = driver.find_elements_by_css_selector('a.comment')
-elems = driver.find_elements_by_class_name('comment')
+    """Wait page change to list mode, but we must re-get the elems!!!
+       Below code is ugly, but we realy need them!!!
+    """
+    try:
+        WebDriverWait(driver, 10).until(lambda x: x.find_element_by_css_selector('div.list'))
+    except Exception as e:
+        logging.info('error:%s, Can not change to  list mode?'%(e))
+        driver.close()
+
+    logging.info('Change list mode success')
+
+def get_allcomment_elements():
+    try:
+        WebDriverWait(driver, 10).until(lambda x: x.find_element_by_css_selector('div.list'))
+    except Exception as e:
+        logging.info('error:%s, Can not get item list?'%(e))
+        driver.close()
+    """Get all comment link, store in a list
+    """
+    elems = driver.find_elements_by_class_name('comment')
+    logging.info('get item comments list success')
+
+    return elems
 
 def is_tmall_page():
     try:
@@ -101,12 +143,23 @@ def is_tmall_page():
     return curl.find('detail.tmall.com') != -1
 
 def click_next_comment_page():
+    sleep(random.uniform(5, 8))
     logging.info('click next page button')
     try:
         if is_tmall_page():
             elem = driver.find_element_by_xpath('//a[contains(text(), "下一页")]')
+            """current page is last page
+            """
+            if elem.get_attribute('class') == 'rate-page-next':
+                logging.info('reached the last comment page')
+                return False
         else:
             elem = driver.find_element_by_xpath('//li[contains(text(), "下一页")]')
+            """current page is last page
+            """
+            if elem.get_attribute('class') == 'pg-next pg-disabled':
+                logging.info('reached the last comment page')
+                return False
  
         ActionChains(driver).move_to_element(elem).click().perform()
         return True
@@ -114,7 +167,7 @@ def click_next_comment_page():
         logging.error('error:%s, end page?'%(e))
         return False
 
-def click_review_pic_btn():
+def click_review_picbtn():
     try:
         if is_tmall_page():
             WebDriverWait(driver, 10).until(lambda x: x.find_element_by_css_selector('div.rate-toolbar'))
@@ -125,9 +178,9 @@ def click_review_pic_btn():
         logging.error('error:%s, Open detail comment faild?'%(e))
         return False
 
-    """wait to load full page
+    """wait to load full page & Cheat
     """
-    sleep(random.uniform(1,2))
+    sleep(random.uniform(2,3))
     if is_tmall_page():
         elem = driver.find_element_by_xpath('//label[contains(text(), "图片")]')
     else:
@@ -140,7 +193,7 @@ def click_review_pic_btn():
         ActionChains(driver).move_to_element(elem).click().perform()
         return True
 
-def get_all_pages_pics_url():
+def get_allpages_picurl():
     pages_urls = []
 
     while True:
@@ -156,24 +209,23 @@ def get_all_pages_pics_url():
             logging.error('error:%s can not show comment?'%(e))
             return False
 
-        pages_urls.extend(get_onepage_pics_url())
+        urls = get_perpage_picurl()
+        if urls:
+            pages_urls.extend(urls)
         
         """slow down to click next page btn
         """
-        sleep(random.uniform(1,5))
-
         if click_next_comment_page():
             continue
         else:
             logging.info('end of comment page')
             break
-
     
     """remove repetition url
     """
     return set(pages_urls)
 
-def get_onepage_pics_url():
+def get_perpage_picurl():
     page_urls = []
 
     try:
@@ -181,11 +233,14 @@ def get_onepage_pics_url():
             WebDriverWait(driver, 10).until(lambda x: x.find_element_by_css_selector('div.tm-rate-content'))
         else:
             WebDriverWait(driver, 10).until(lambda x: x.find_element_by_css_selector('div.review-details'))
-
+        """Wait page stable
+        """
+        sleep(1)
         elems = driver.find_elements_by_xpath('//img[contains(@src,"_40x40.jpg")]')
         logging.info('find img url')
     except Exception as e:
         logging.error('error:%s, can not find img url?'%(e))
+        return False
 
     for e in elems:
         url = e.get_attribute('src')[0:-10]
@@ -193,8 +248,9 @@ def get_onepage_pics_url():
 
     return page_urls
 
-def save_pics(urls):
+def save_pic(urls):
     global i
+    count = 1
     for url in urls:
         req = urllib.request.Request(url=url, headers=headers)
         try:
@@ -204,69 +260,58 @@ def save_pics(urls):
             continue
         f = open(str(i) + '.jpg', 'wb')
         f.write(data)
-        logging.info('saved pic, url:%s'%(url))
+        logging.info('saved the %d pic, url:%s'%(count, url))
         f.close()
         i += 1
+        count += 1
         sleep(random.uniform(1,3))
 
 
 def download_comment_pic():
-    if click_review_pic_btn():
-        urls = get_all_pages_pics_url()
-#        if not urls:
-#            save_pics(urls)
+    if click_review_picbtn():
+        urls = get_allpages_picurl()
+        logging.info('total pics:%d'%(len(urls)))
+        if urls:
+            save_pic(urls)
 
-for e in elems:
-    sleep(random.uniform(2,4))
-    logging.info(e.get_attribute('href'))
-    """right click on the comment, to open a new tab
-    """
-    ActionChains(driver).move_to_element(e).context_click().send_keys(Keys.ARROW_DOWN).send_keys(Keys.ENTER).perform()
+def create_item_folder():
+    try:
+        if is_tmall_page():
+            elem = driver.find_element_by_xpath('//div[@class="tb-detail-hd"]/h1')
+        else:
+            elem = driver.find_element_by_xpath('//h3[@class="tb-main-title"]')
+    except Exception as e:
+        logging.error("error:%s, Can not get item title?"%(e))
 
-    """switch to new tab
-    """
-    handles = driver.window_handles
-    logging.info(handles)
-    logging.info(driver.current_window_handle)
-    driver.switch_to_window(handles[1])
-    logging.info(driver.current_window_handle)
+#    os.mkdir(path_pic + e.text)
+
+if __name__ == "__main__":
+
+    hunter_init()
+    enter_key_words(k_words)
+    click_sortbysale_btn()
+    click_showbylist_btn()
+    elems = get_allcomment_elements()
+    for e in elems[1:]:
+        sleep(random.uniform(2,3))
+        """right click on the comment, to open a new tab
+        """
+        ActionChains(driver).move_to_element(e).context_click().send_keys(Keys.ARROW_DOWN).send_keys(Keys.ENTER).perform()
     
-    """wait for load full comment page
-    """
+        """switch to new tab
+        """
+        handles = driver.window_handles
+        print(handles)
+        driver.switch_to_window(handles[1])
+        
+        """Create relate folder
+        """
+        create_item_folder() 
 
-    download_comment_pic()
-    sleep(random.uniform(3,5))
-
-
-    """Close the new tab, return to original page
-    """
-    driver.close()
-    driver.switch_to_window(handles[0])
-
-
-
-
-#"""right click on the comment, to open a new tab
-#"""
-#e = elems[0]
-#ActionChains(driver).move_to_element(e).context_click().send_keys(Keys.ARROW_DOWN).send_keys(Keys.ENTER).perform()
-#
-#"""switch to new tab
-#"""
-#handles = driver.window_handles
-#driver.switch_to_window(handles[1])
-#sleep(3)
-#
-#"""Close the new tab
-#"""
-#driver.close()
-#driver.switch_to_window(handles[0])
-
-#driver.get('https://item.taobao.com/item.htm?spm=a230r.1.14.9.6b47abc9C226eH&id=533113514597&ns=1&abbucket=15&on_comment=1')
-#sleep(20)
-#try:
-#    WebDriverWait(driver, 20).until(lambda x: x.find_element_by_link_text('图片'))
-#except:
-#    driver.close()
-#elem = driver.find_element_by_link_text('图片')
-#ActionChains.move_to_element(elem).click().perform()
+#        download_comment_pic()
+        sleep(random.uniform(3, 6))
+    
+        """Close the new tab, return to original page
+        """
+        driver.close()
+        driver.switch_to_window(handles[0])
