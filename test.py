@@ -31,16 +31,17 @@ headers = {
         
 }
 
+k_words_list = ['性感 翘臀 运动 女 夏', '蕾丝 极度诱惑']
+page_dep = 10
+
 global url
 url = 'https://www.taobao.com'
 global driver
 driver = webdriver.Chrome()
-global i
-i = 0
 global k_words
-k_words = '比基尼 三点式'
-global path_pic
-path_pic = '/home/bwu/pics'
+k_words = '好奇小姐 极度诱惑'
+global root_path
+root_path = os.path.abspath(os.curdir)
 
 def hunter_init():
     logging.info('Start hunter')
@@ -104,11 +105,11 @@ def click_showbylist_btn():
     """Change page to list mode, find the element first
     """
     elems = driver.find_elements_by_css_selector('a.J_Ajax.J_SortbarStyle.link.icon-tag')
-    for e in elems:
-        if (e.get_attribute('title')) == '列表模式':
+    for elem in elems:
+        if (elem.get_attribute('title')) == '列表模式':
             logging.info('find list styles bar')
             break
-    ActionChains(driver).move_to_element(e).click().perform()
+    ActionChains(driver).move_to_element(elem).click().perform()
 
     """Wait page change to list mode, but we must re-get the elems!!!
        Below code is ugly, but we realy need them!!!
@@ -181,10 +182,15 @@ def click_review_picbtn():
     """wait to load full page & Cheat
     """
     sleep(random.uniform(2,3))
-    if is_tmall_page():
-        elem = driver.find_element_by_xpath('//label[contains(text(), "图片")]')
-    else:
-        elem = driver.find_element_by_xpath('//input[@id="reviews-t-val3"]')
+
+    try:
+        if is_tmall_page():
+            elem = driver.find_element_by_xpath('//label[contains(text(), "图片")]')
+        else:
+            elem = driver.find_element_by_xpath('//input[@id="reviews-t-val3"]')
+    except Exception as e:
+        logging.error('error:%s, No pic in comment?'%(e))
+        return False
 
     if elem is None:
         logging.info('No pic in commet')
@@ -248,33 +254,7 @@ def get_perpage_picurl():
 
     return page_urls
 
-def save_pic(urls):
-    global i
-    count = 1
-    for url in urls:
-        req = urllib.request.Request(url=url, headers=headers)
-        try:
-            data = urllib.request.urlopen(req).read()
-        except Exception as e:
-            logging.error('error:%s, missing pic url:%s?'%(e, url))
-            continue
-        f = open(str(i) + '.jpg', 'wb')
-        f.write(data)
-        logging.info('saved the %d pic, url:%s'%(count, url))
-        f.close()
-        i += 1
-        count += 1
-        sleep(random.uniform(1,3))
-
-
-def download_comment_pic():
-    if click_review_picbtn():
-        urls = get_allpages_picurl()
-        logging.info('total pics:%d'%(len(urls)))
-        if urls:
-            save_pic(urls)
-
-def create_item_folder():
+def create_item_title():
     try:
         if is_tmall_page():
             elem = driver.find_element_by_xpath('//div[@class="tb-detail-hd"]/h1')
@@ -283,7 +263,76 @@ def create_item_folder():
     except Exception as e:
         logging.error("error:%s, Can not get item title?"%(e))
 
-#    os.mkdir(path_pic + e.text)
+    """Create a folder relate to item
+    """
+    os.chdir(root_path)
+    os.mkdir(elem.text)
+    os.chdir(elem.text)
+
+def save_pic(urls):
+    pic_num = 1
+    for url in urls:
+        req = urllib.request.Request(url=url, headers=headers)
+        try:
+            data = urllib.request.urlopen(req).read()
+        except Exception as e:
+            logging.error('error:%s, missing pic url:%s?'%(e, url))
+            continue
+        
+        f = open(str(pic_num) + '.jpg', 'wb')
+        f.write(data)
+        logging.info('saved the %d pic, url:%s'%(pic_num, url))
+        f.close()
+        pic_num += 1
+        sleep(random.uniform(1,2))
+
+def download_comment_pic():
+    if click_review_picbtn():
+        create_item_title()
+        urls = get_allpages_picurl()
+        logging.info('total pics:%d'%(len(urls)))
+        if urls:
+            save_pic(urls)
+
+def click_next_item_page():
+    try:
+        elem = driver.find_element_by_xpath('//ul[@class="items"]/li[@class="item next"]')
+    except Exception as e:
+        logging.error('error:%s, Can not found next page button'%(e))
+        return False
+
+    ActionChains(driver).move_to_element(elem).click().perform()
+    return True
+
+def get_per_item_page():
+    elems = get_allcomment_elements()
+    for elem in elems[6:]:
+        sleep(random.uniform(2,3))
+        """right click on the comment, to open a new tab
+        """
+        ActionChains(driver).move_to_element(elem).context_click().send_keys(Keys.ARROW_DOWN).send_keys(Keys.ENTER).perform()
+    
+        """switch to new tab
+        """
+        handles = driver.window_handles
+        logging.info(handles)
+        driver.switch_to_window(handles[1])
+
+        download_comment_pic()
+        sleep(random.uniform(3, 6))
+    
+        """Close the new tab, return to original page
+        """
+        driver.close()
+        driver.switch_to_window(handles[0])
+
+def current_active_page():
+    try:
+        elem = driver.find_element_by_xpath('//ul[@class="items"]/li[@class="item active"]/span')
+    except Exception as e:
+        logging.error('error:%s, No active page?'%(e))
+
+    return elem.text
 
 if __name__ == "__main__":
 
@@ -291,27 +340,9 @@ if __name__ == "__main__":
     enter_key_words(k_words)
     click_sortbysale_btn()
     click_showbylist_btn()
-    elems = get_allcomment_elements()
-    for e in elems[1:]:
-        sleep(random.uniform(2,3))
-        """right click on the comment, to open a new tab
-        """
-        ActionChains(driver).move_to_element(e).context_click().send_keys(Keys.ARROW_DOWN).send_keys(Keys.ENTER).perform()
-    
-        """switch to new tab
-        """
-        handles = driver.window_handles
-        print(handles)
-        driver.switch_to_window(handles[1])
-        
-        """Create relate folder
-        """
-        create_item_folder() 
+    while int(current_active_page()) <= page_dep:
+        get_per_item_page()
+        if click_next_item_page():
+            break
 
-#        download_comment_pic()
-        sleep(random.uniform(3, 6))
-    
-        """Close the new tab, return to original page
-        """
-        driver.close()
-        driver.switch_to_window(handles[0])
+    logging.info('End hunter')
