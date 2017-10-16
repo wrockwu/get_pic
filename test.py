@@ -37,15 +37,15 @@ page_dep = 10
 global url
 url = 'https://www.taobao.com'
 global driver
-driver = webdriver.Chrome()
+#driver = webdriver.Chrome()
+driver = webdriver.PhantomJS(desired_capabilities=dcap)
 global k_words
-k_words = '好奇小姐 极度诱惑'
+k_words = k_words_list[0]
 global root_path
 root_path = os.path.abspath(os.curdir)
 
 def hunter_init():
     logging.info('Start hunter')
-    #driver = webdriver.PhantomJS(desired_capabilities=dcap)
     driver.get(url)
 
 def enter_key_words(words):
@@ -81,10 +81,12 @@ def click_sortbysale_btn():
     """Change page sort by sale
     """
     elem = driver.find_element_by_link_text('销量')
-    actions = ActionChains(driver)
-    actions.move_to_element(elem)
-    actions.click()
-    actions.perform() 
+    try:
+        #ActionChains(driver).move_to_element(elem).click().perform() 
+        elem.click()
+    except Exception as e:
+        logging.error('error:%s, click sort by sale btn failed?'%(e))
+        driver.close()
 
     """Wait page change to sort by sale
     """
@@ -109,12 +111,13 @@ def click_showbylist_btn():
         if (elem.get_attribute('title')) == '列表模式':
             logging.info('find list styles bar')
             break
-    ActionChains(driver).move_to_element(elem).click().perform()
 
-    """Wait page change to list mode, but we must re-get the elems!!!
+    """Click & Wait page change to list mode, but we must re-get the elems!!!
        Below code is ugly, but we realy need them!!!
     """
     try:
+        #ActionChains(driver).move_to_element(elem).click().perform()
+        elem.click()
         WebDriverWait(driver, 10).until(lambda x: x.find_element_by_css_selector('div.list'))
     except Exception as e:
         logging.info('error:%s, Can not change to  list mode?'%(e))
@@ -148,6 +151,7 @@ def click_next_comment_page():
     logging.info('click next page button')
     try:
         if is_tmall_page():
+            logging.info('current is Tmall page')
             elem = driver.find_element_by_xpath('//a[contains(text(), "下一页")]')
             """current page is last page
             """
@@ -155,6 +159,7 @@ def click_next_comment_page():
                 logging.info('reached the last comment page')
                 return False
         else:
+            logging.info('current is Taobao page')
             elem = driver.find_element_by_xpath('//li[contains(text(), "下一页")]')
             """current page is last page
             """
@@ -162,7 +167,8 @@ def click_next_comment_page():
                 logging.info('reached the last comment page')
                 return False
  
-        ActionChains(driver).move_to_element(elem).click().perform()
+        #ActionChains(driver).move_to_element(elem).click().perform()
+        elem.click()
         return True
     except Exception as e:
         logging.error('error:%s, end page?'%(e))
@@ -196,8 +202,13 @@ def click_review_picbtn():
         logging.info('No pic in commet')
         return False
     else:
-        ActionChains(driver).move_to_element(elem).click().perform()
-        return True
+        try:
+            #ActionChains(driver).move_to_element(elem).click().perform()
+            elem.click()
+            return True
+        except Exception as e:
+            logging.error('error:%s, Can not click review pic btn?'%(e))
+            return False
 
 def get_allpages_picurl():
     pages_urls = []
@@ -266,7 +277,8 @@ def create_item_title():
     """Create a folder relate to item
     """
     os.chdir(root_path)
-    os.mkdir(elem.text)
+    if not os.path.exists(elem.text):
+        os.mkdir(elem.text)
     os.chdir(elem.text)
 
 def save_pic(urls):
@@ -297,16 +309,17 @@ def download_comment_pic():
 def click_next_item_page():
     try:
         elem = driver.find_element_by_xpath('//ul[@class="items"]/li[@class="item next"]')
+        #ActionChains(driver).move_to_element(elem).click().perform()
+        elem.click()
     except Exception as e:
         logging.error('error:%s, Can not found next page button'%(e))
         return False
 
-    ActionChains(driver).move_to_element(elem).click().perform()
     return True
 
 def get_per_item_page():
     elems = get_allcomment_elements()
-    for elem in elems[6:]:
+    for elem in elems:
         sleep(random.uniform(2,3))
         """right click on the comment, to open a new tab
         """
