@@ -31,7 +31,7 @@ headers = {
         
 }
 
-k_words_list = ['性感 翘臀 运动 女 夏', '蕾丝 极度诱惑']
+k_words_list = ['美女']
 page_dep = 10
 
 global url
